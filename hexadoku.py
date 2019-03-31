@@ -21,36 +21,39 @@ def Main():
     if not (SolveHexadoku(grid, computedGrid)):
         print("No more solutions!")
     
+    # Use some rules reduce running time of brute forece DFS
+    # Given easier puzzles this might just straight out solve them. 
 def PrecomputeHexa(grid, computedGrid):
     redo = False
-    computedGrid = AssessPossibilities(grid, computedGrid)
+    AssessPossibilities(grid, computedGrid)
     if(InsertSingles(grid, computedGrid)):
-        computedGrid = AssessPossibilities(grid, computedGrid)
         redo = True
     if(CrossCheckRows(grid, computedGrid)):
-        computedGrid = AssessPossibilities(grid, computedGrid)
         redo = True
     if(CrossCheckCollumns(grid, computedGrid)):
-        computedGrid = AssessPossibilities(grid, computedGrid)
         redo = True
     if(CrossCheckSubGrid(grid, computedGrid)):
-        computedGrid = AssessPossibilities(grid, computedGrid)
         redo = True
     if(redo):
         return PrecomputeHexa(grid, computedGrid)
     return computedGrid[:]
 
+    # Asses the possible values for each entry in the grid.
+    # Further calls ValidationCheck() which checks if the value is valid.
 def AssessPossibilities(grid, computedGrid):
-    computedGrid =[[[] for y in range(16)]for z in range(16)]
     for row in range(16):
         for column in range(16):
             if(grid[row][column] is 42):
+                computedGrid[row][column].clear()
                 for i in range(16):
                     if(ValidationCheck(grid, row,column, i)):
                         computedGrid[row][column].append(i)
-    computedGrid = RestrictPossibilites(grid, computedGrid)
-    return computedGrid
+    RestrictPossibilites(grid, computedGrid)
 
+    # This reduces the amount of posibillites for each entry in the grid by 
+    # checking if, for a subgrid a, number can only occur in a specific row or column.
+    # If thats the case, then eliminate that number as a possible candidate on that row 
+    # or column for other subgrids
 def RestrictPossibilites(grid, computedGrid):
     for gridRow in range(4):
         for gridColumn in range(4):
@@ -72,6 +75,8 @@ def RestrictPossibilites(grid, computedGrid):
                                 if(guess in possibles[z][q]):
                                     correct = False
                                     break
+                            if(not correct):
+                                break
                         if(correct):
                             for col in range(16):
                                 if(col == (gridColumn*4)+ col%4):
@@ -93,6 +98,8 @@ def RestrictPossibilites(grid, computedGrid):
                                 if(guess in possibles[z][q]):
                                     correct = False
                                     break
+                            if(not correct):
+                                break
                         if(correct):
                             for row in range(16):
                                 if(row == (gridRow*4)+ row%4):
@@ -101,29 +108,26 @@ def RestrictPossibilites(grid, computedGrid):
                                     computedGrid[row][(gridColumn*4) + y].remove(guess)
                                 except:
                                     pass
-    return computedGrid
-                    
+
+# If there is a single posibility for a entry we can just insert it since it has to be that one.
 def InsertSingles(grid, computedGrid):
-    gridChanged = False
     for row in range(16):
         for column in range(16):
             if(grid[row][column] is 42):
                 if(len(computedGrid[row][column]) == 1):
                     grid[row][column] = computedGrid[row][column][0]
                     # print("Inserted single character!")
-                    gridChanged = True
+                    AssessPossibilities(grid, computedGrid)
                     return True
-    if(gridChanged):
-        return True
-    return False
 
-def CrossCheckRows(grid, computeGrid):
-    gridChanged = False
+    # Compare the possible values for a row, if a specific entry has a unique value that the others
+    # do not share we know that the unique value has to fill that entry. Then repeat for all rows.
+def CrossCheckRows(grid, computedGrid):
     for row in range(16):
         possibles = [[] for x in range(16)]
         for column in range(16):
             if(grid[row][column] is 42):
-                possibles[column] = computeGrid[row][column]
+                possibles[column] = computedGrid[row][column]
         for x in range(16): 
             if(not possibles[x]):
                 continue
@@ -135,15 +139,15 @@ def CrossCheckRows(grid, computeGrid):
                         break
                 if(correct):
                     grid[row][x] = guess
+                    computedGrid[row][x].clear()
+                    AssessPossibilities(grid, computedGrid)
+                    InsertSingles(grid, computedGrid)
                     # print("Optimized a row!")
-                    gridChanged = True
                     return True
-    if(gridChanged):
-        return True
-    return False
-                    
+
+    # Compare the possible values for a column, if a specific entry has a unique value that the others
+    # do not share we know that the unique value has to fill that entry. Then repeat for all columns.      
 def CrossCheckCollumns(grid, computedGrid):
-    gridChanged = False
     for row in range(16):
         possibles = [[] for x in range(16)]
         for column in range(16):
@@ -160,15 +164,14 @@ def CrossCheckCollumns(grid, computedGrid):
                         break
                 if(correct):
                     grid[x][row] = guess
+                    computedGrid[x][row].clear()
+                    AssessPossibilities(grid, computedGrid)
                     # print("Optimized a column!")
-                    gridChanged = True
                     return True
-    if(gridChanged):
-        return True        
-    return False        
 
+    # Compare the possible values for a subgrid, if a specific entry has a unique value that the others
+    # do not share we know that the unique value has to fill that entry. Then repeat for all subgrids.     
 def CrossCheckSubGrid(grid, computedGrid):
-    gridChanged = False
     for gridRow in range(4):
         for gridColumn in range(4):
             possibles = [[[] for x in range(4)]for y in range(4)]
@@ -189,16 +192,19 @@ def CrossCheckSubGrid(grid, computedGrid):
                                 if(guess in possibles[z][q]):
                                     correct = False
                                     break
+                            if(not correct):
+                                break
                         if(correct):
                             grid[(gridRow*4) + x][(gridColumn*4) + y] = guess
+                            computedGrid[(gridRow*4) + x][(gridColumn*4) + y].clear()
+                            AssessPossibilities(grid, computedGrid)
                             # print("Optimized a subgrid!")
-                            gridChanged = True
                             return True
-    if(gridChanged):
-        return True
-    return False     
-                    
-
+    # A backtracking agorithm to ensure that all solutions are presented.
+    # This is a really slow algorithm so some very difficult puzzles might take some time to complete.
+    # Backtracking works by going through each entry in the grid and then testing a valid number. Then continue 
+    # with the next entry, this repeats untill a entry cannot be filled, then it loops back to the first entry and tries 
+    # another path. This can be represented as a tree (very large) and performing a brute force depth first search.
 def SolveHexadoku(grid, computedGrid):
     currentLocation = [0,0]
     if(not FindEmptyLocation(grid,computedGrid, currentLocation)):
@@ -232,22 +238,14 @@ def ValidationCheck(grid, row, column, number):
             return False
     return True
 
-# Find a empty location in the grid. 
-# Choose the location with the least amount of options in increase performance of 
-# DFS.
+# Find the next empty location in the grid. 
 def FindEmptyLocation(grid, computedGrid, currentLocation):
-    guesses = 16
-    found = False
     for row in range(16): 
         for column in range(16): 
             if(grid[row][column] == 42): 
-                if(len(computedGrid[row][column]) < guesses):
-                    currentLocation[0]=row 
-                    currentLocation[1]=column 
-                    guesses = len(computedGrid[row][column])
-                    found = True
-    if(found):
-        return True
+                currentLocation[0]=row 
+                currentLocation[1]=column 
+                return True
     return False
 
 #  Print a 16x16 grid and convert the output to hexadecimal
