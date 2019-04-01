@@ -2,7 +2,7 @@ import timeit
 
 def Main():
     try: 
-        hexafile = open("examplegrid.txt", "r")
+        hexafile = open("hexa.txt", "r")
     except Exception as e:
         return print("Error: "+ str(e))
     grid = [[0 for x in range(16)]for y in range(16)] 
