@@ -41,7 +41,7 @@ def precompute_grid(
     return possibilities[:]
 
 
-def assess_possibilities(grid, possibilities):
+def assess_possibilities(grid: List[List[int]], possibilities: List[List[int]]):
     for row in range(size):
         for column in range(size):
             if grid[row][column] is unknown:
