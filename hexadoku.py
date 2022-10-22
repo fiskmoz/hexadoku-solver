@@ -138,7 +138,7 @@ def assess_possibilities(grid: Grid) -> None:
 
 
 def subgrid_match(
-        grid: List[List[int]],
+        grid: Grid,
         target: CellCheck) -> bool:
     """
     This reduces the amount of possibilities for each entry in the grid by
@@ -148,16 +148,16 @@ def subgrid_match(
     """
     for grid_row in range(SUBGRIDSIZE):
         for grid_column in range(SUBGRIDSIZE):
-            possibles = init_subsgrid_possibilities(
+            subgrid_possibilities = init_subgrid_possibilities(
                 grid, grid_row, grid_column
             )
             for subgrid_x in range(SUBGRIDSIZE):
                 for subgrid_y in range(SUBGRIDSIZE):
-                    if not possibles[subgrid_x][subgrid_y]:
+                    if not subgrid_possibilities[subgrid_x][subgrid_y]:
                         continue
-                    for guess in possibles[subgrid_x][subgrid_y]:
+                    for guess in subgrid_possibilities[subgrid_x][subgrid_y]:
                         guess_validity = is_guess_possible(
-                            possibles,
+                            subgrid_possibilities,
                             target,
                             subgrid_x,
                             subgrid_y,
@@ -214,7 +214,7 @@ def match_guess(
 
 
 def is_guess_possible(
-    possibles: List[List[list]],
+    possibles: List[List[int]],
     target: CellCheck,
     subgrid_x: int,
     subgrid_y: int,
@@ -243,7 +243,7 @@ def is_guess_possible(
     return correct
 
 
-def init_subsgrid_possibilities(
+def init_subgrid_possibilities(
     grid: Grid,
     grid_row: int,
     grid_column: int,
