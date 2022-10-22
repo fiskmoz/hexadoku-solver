@@ -272,8 +272,10 @@ def insert_single_valid_number(grid: Grid) -> bool:
     """
     for row in range(SIZE):
         for column in range(SIZE):
-            if grid.cells[row][column] is UNKNOWN and len(grid.cells[row][column].posibilties) == 1:
-                grid.cells[row][column].value = grid.cells[row][column].posibilties[0]
+            cell = grid.cells[row][column]
+            if cell.value is UNKNOWN and len(cell.posibilties) == 1:
+                grid.cells[row][column].value = cell.posibilties[0]
+                grid.cells[row][column].posibilties.clear()
                 return True
     return False
 
