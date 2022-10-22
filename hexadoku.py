@@ -1,224 +1,326 @@
+"""Base application, run this to start the application."""
+
+from enum import Enum
 import timeit
 import math
 from typing import List
 from io import TextIOWrapper
 
+start = timeit.default_timer()
+
+UNKNOWN = 42
+SIZE = 16
+SUBGRIDSIZE = int(math.sqrt(SIZE))
+
+
+class Cell():
+    """Cell class, contains posiblities and actual known value of a cell"""
+
+    def __init__(self, posibilities: List[int], value: int):
+        self.posibilties = posibilities
+        self.value = value
+
+    posibilties: List[int]
+    value: int
+
+
+class Grid():
+    """Grid class, contains all cells"""
+
+    def __init__(self, cells: List[List[Cell]]):
+        self.cells = cells
+
+    cells: List[List[Cell]]
+
+
+class CellCheck(Enum):
+    """Enumeration of cells or cellpaths to check"""
+    SINGLE = 1
+    ROW = 2
+    COLUMN = 3
+
 
 def main():
+    """Base application, run this to start the application."""
     grid_file = get_grid_file()
     grid = initialize_grid(grid_file)
     print_grid(grid)
-    possibilities = [[[] for y in range(size)] for z in range(size)]
-    possibilities = precompute_grid(grid, possibilities)
+    print("Precomputing...")
+    precompute_grid(grid)
+    print("Precomputation done... could simply grid to this")
+    print_grid(grid)
+    if not get_next_location(grid):
+        return
+    print_grid_posibilities(grid)
+    print("I am probably not stuck, sometimes this just takes a while")
     print("Now solving...")
-    if not (solve_single_solution(grid, possibilities)):
+    if not solve_single_solution(grid):
         print("No more solutions!")
 
 
-# Use some rules to reduce running time of brute force DFS
-# Given easier puzzles this might just straight out solve them.
+def get_grid_file() -> TextIOWrapper:
+    """
+    Loading the grid from a .txt file, see examplegrid file for formatting to use your own grid.
+    """
+    try:
+        grid_file = open("single_solution_example.txt", "r", encoding="utf-8")
+    except OSError as exception:
+        return print("Error: " + str(exception))
+    return grid_file
 
 
-def precompute_grid(
-    grid: List[List[int]], possibilities: List[List[list]]
-) -> List[List[list]]:
+def print_grid(grid: Grid) -> None:
+    """Print a 16x16 grid and convert the output to hexadecimal"""
+    print("This is the grid!")
+    for row in range(SIZE):
+        for column in range(SIZE):
+            if column % SUBGRIDSIZE == 0:
+                print("", end=" ")
+            if grid.cells[row][column].value is UNKNOWN:
+                print("*", end=" ")
+            else:
+                _ = print(hex(grid.cells[row][column].value)[2:], end=" ")
+        print(" ")
+        if (1 + row) % SUBGRIDSIZE == 0:
+            print(" ")
+
+
+def initialize_grid(file: TextIOWrapper) -> Grid:
+    """Init 2D array for the grid. Enter values given from file."""
+    grid = [[Cell(list(range(SIZE)), 0) for _ in range(SIZE)] for _ in range(SIZE)]
+    lines = [line for line in file.readlines() if line.strip()]
+    for row, line in enumerate(lines):
+        values = line.split()
+        for column, value in enumerate(values):
+            try:
+                grid[row][column].value = int(value, SIZE)
+                grid[row][column].posibilties = []
+            except:  # pylint: disable=bare-except
+                grid[row][column].value = ord(value)
+    return Grid(grid)
+
+
+def precompute_grid(grid: Grid) -> Grid:
+    """
+    Use some rules to reduce running time of brute force DFS
+    Given easier puzzles this might just straight out solve them.
+    """
     redo = False
-    assess_possibilities(grid, possibilities)
-    if insert_single_valid_number_in_line(grid, possibilities):
-        assess_possibilities(grid, possibilities)
+    assess_possibilities(grid)
+    if insert_single_valid_number(grid):
+        assess_possibilities(grid)
         redo = True
-    if cross_check(grid, possibilities, "row"):
-        assess_possibilities(grid, possibilities)
+    if cross_check(grid, CellCheck.ROW):
+        assess_possibilities(grid)
         redo = True
-    if cross_check(grid, possibilities, "column"):
-        assess_possibilities(grid, possibilities)
+    if cross_check(grid, CellCheck.COLUMN):
+        assess_possibilities(grid)
         redo = True
-    if subgrid_match(grid, possibilities, "single"):
-        assess_possibilities(grid, possibilities)
+    if subgrid_match(grid, CellCheck.SINGLE):
+        assess_possibilities(grid)
         redo = True
     if redo:
-        return precompute_grid(grid, possibilities)
-    return possibilities[:]
+        return precompute_grid(grid)
+    return grid
 
 
-def assess_possibilities(grid: List[List[int]], possibilities: List[List[int]]):
-    for row in range(size):
-        for column in range(size):
-            if grid[row][column] is unknown:
-                possibilities[row][column].clear()
-                for number in range(size):
+def assess_possibilities(grid: Grid) -> None:
+    """ Update the amount of posibilities for each cell in the grid """
+    for row in range(SIZE):
+        for column in range(SIZE):
+            if grid.cells[row][column].value is UNKNOWN:
+                grid.cells[row][column].posibilties.clear()
+                for number in range(SIZE):
                     if number_has_valid_position(grid, row, column, number):
-                        possibilities[row][column].append(number)
-    subgrid_match(grid, possibilities, "column")
-    subgrid_match(grid, possibilities, "row")
-
-
-# This reduces the amount of possibilities for each entry in the grid by
-# checking if, for a subgrid, a number can only occur in a specific row or column.
-# If thats the case, then eliminate that number as a possible candidate on that row
-# or column for other subgrids.
+                        grid.cells[row][column].posibilties.append(number)
+    subgrid_match(grid, CellCheck.COLUMN)
+    subgrid_match(grid, CellCheck.ROW)
 
 
 def subgrid_match(
-    grid: List[List[int]],
-    possibilities: List[List[list]],
-    target: str,
-) -> bool:
-    for gridRow in range(subgridsize):
-        for gridColumn in range(subgridsize):
+        grid: List[List[int]],
+        target: CellCheck) -> bool:
+    """
+    This reduces the amount of possibilities for each entry in the grid by
+    checking if, for a subgrid, a number can only occur in a specific row or column.
+    If thats the case, then eliminate that number as a possible candidate on that row
+    or column for other subgrids.
+    """
+    for grid_row in range(SUBGRIDSIZE):
+        for grid_column in range(SUBGRIDSIZE):
             possibles = init_subsgrid_possibilities(
-                grid, possibilities, gridRow, gridColumn
+                grid, grid_row, grid_column
             )
-            for x in range(subgridsize):
-                for y in range(subgridsize):
-                    if not possibles[x][y]:
+            for subgrid_x in range(SUBGRIDSIZE):
+                for subgrid_y in range(SUBGRIDSIZE):
+                    if not possibles[subgrid_x][subgrid_y]:
                         continue
-                    match_found = make_and_match_guess(
-                        grid,
-                        possibilities,
-                        possibles,
-                        target,
-                        gridRow,
-                        gridColumn,
-                        x,
-                        y,
-                    )
-                    if match_found:
-                        return True
+                    for guess in possibles[subgrid_x][subgrid_y]:
+                        guess_validity = is_guess_possible(
+                            possibles,
+                            target,
+                            subgrid_x,
+                            subgrid_y,
+                            guess
+                        )
+                        if guess_validity:
+                            match_found = match_guess(
+                                grid,
+                                target,
+                                grid_row * SUBGRIDSIZE,
+                                grid_column * SUBGRIDSIZE,
+                                subgrid_x,
+                                subgrid_y,
+                                guess
+                            )
+                            if match_found:
+                                return True
 
     return False
 
 
-# Initialize all possible values for a given subgrid based on given row and column (will always target first square in subgrid).
-
-
-def make_and_match_guess(
-    grid: List[List[int]],
-    possibilities: List[List[list]],
-    possibles: List[List[list]],
+def match_guess(
+    grid: Grid,
     target: str,
-    gridRow: int,
-    gridColumn: int,
-    x: int,
-    y: int,
+    row_adjusted: int,
+    col_adjusted: int,
+    subgrid_x: int,
+    subgrid_y: int,
+    guess: int
 ) -> bool:
-    for guess in possibles[x][y]:
-        correct = True
-        for z in range(subgridsize):
-            for q in range(subgridsize):
-                if q == y:
-                    if x == z:
-                        if target is "single":
-                            continue
-                    elif target is "row":
-                        continue
-                elif x == z and target is "column":
-                    continue
-                if guess in possibles[z][q]:
-                    correct = False
-                    break
-            if not correct:
-                break
-        if correct:
-            row_adjusted = gridRow * subgridsize
-            col_adjusted = gridColumn * subgridsize
-            if target is "single":
-                grid[(row_adjusted) + x][(col_adjusted) + y] = guess
-                possibilities[(row_adjusted) + x][(col_adjusted) + y].clear()
-                return True
-            elif target is "row":
-                for row in range(size):
-                    if row is (row_adjusted) + row % subgridsize:
-                        continue
-                    if guess not in possibilities[row][(col_adjusted) + y]:
-                        continue
-                    possibilities[row][(col_adjusted) + y].remove(guess)
-            elif target is "column":
-                for col in range(size):
-                    if col is (col_adjusted) + col % subgridsize:
-                        continue
-                    if guess not in possibilities[(row_adjusted) + x][col]:
-                        continue
-                    possibilities[(row_adjusted) + x][col].remove(guess)
+    """
+    Tries to update a grid with a guess, if it finds a clear match, add it
+    Otherwise reduces posibilties
+    """
+    if target is CellCheck.SINGLE:
+        grid.cells[(row_adjusted) + subgrid_x][(col_adjusted) + subgrid_y].value = guess
+        grid.cells[(row_adjusted) + subgrid_x][(col_adjusted) + subgrid_y].posibilties.clear()
+        return True
+    elif target is CellCheck.ROW:
+        for row in range(SIZE):
+            if row is (row_adjusted) + row % SUBGRIDSIZE:
+                continue
+            if guess not in grid.cells[row][(col_adjusted) + subgrid_y].posibilties:
+                continue
+            grid.cells[row][(col_adjusted) + subgrid_y].posibilties.remove(guess)
+    elif target is CellCheck.COLUMN:
+        for col in range(SIZE):
+            if col is (col_adjusted) + col % SUBGRIDSIZE:
+                continue
+            if guess not in grid.cells[(row_adjusted) + subgrid_x][col].posibilties:
+                continue
+            grid.cells[(row_adjusted) + subgrid_x][col].posibilties.remove(guess)
     return False
+
+
+def is_guess_possible(
+    possibles: List[List[list]],
+    target: CellCheck,
+    subgrid_x: int,
+    subgrid_y: int,
+    guess: int
+) -> bool:
+    """
+    Tries to deduce if a guess (number) is valid at a specific position inside the grid
+    if found update the grid depending on the target
+    """
+    correct = True
+    for new_subgrid_x in range(SUBGRIDSIZE):
+        for new_subgrid_y in range(SUBGRIDSIZE):
+            if new_subgrid_y == subgrid_y:
+                if subgrid_x == new_subgrid_x:
+                    if target == CellCheck.SINGLE:
+                        continue
+                elif target == CellCheck.ROW:
+                    continue
+            elif subgrid_x == new_subgrid_x and target == CellCheck.COLUMN:
+                continue
+            if guess in possibles[new_subgrid_x][new_subgrid_y]:
+                correct = False
+                break
+        if not correct:
+            break
+    return correct
 
 
 def init_subsgrid_possibilities(
-    grid: List[List[int]],
-    possibilities: List[List[list]],
-    gridRow: int,
-    gridColumn: int,
+    grid: Grid,
+    grid_row: int,
+    grid_column: int,
 ) -> List[List[list]]:
+    """
+    Initialize all possible values for a given subgrid based on given
+    row and column (will always target first square in subgrid).
+    """
     return [
         [
-            possibilities[(gridRow * subgridsize) + row][
-                (gridColumn * subgridsize) + column
-            ]
-            if grid[(gridRow * subgridsize) + row][(gridColumn * subgridsize) + column]
-            is unknown
+            grid.cells[(grid_row * SUBGRIDSIZE) + row][
+                (grid_column * SUBGRIDSIZE) + column
+            ].posibilties
+            if grid.cells[(grid_row * SUBGRIDSIZE) + row][(grid_column * SUBGRIDSIZE) + column]
+            .value is UNKNOWN
             else []
-            for column in range(subgridsize)
+            for column in range(SUBGRIDSIZE)
         ]
-        for row in range(subgridsize)
+        for row in range(SUBGRIDSIZE)
     ]
 
 
-def insert_single_valid_number_in_line(
-    grid: List[List[int]], possibilities: List[List[list]]
-) -> bool:
-    for row in range(size):
-        for column in range(size):
-            if grid[row][column] is unknown and len(possibilities[row][column]) == 1:
-                grid[row][column] = possibilities[row][column][0]
+def insert_single_valid_number(grid: Grid) -> bool:
+    """
+    if a position in a line has only 1 possible insert it
+    """
+    for row in range(SIZE):
+        for column in range(SIZE):
+            if grid.cells[row][column] is UNKNOWN and len(grid.cells[row][column].posibilties) == 1:
+                grid.cells[row][column].value = grid.cells[row][column].posibilties[0]
                 return True
     return False
 
 
-# Compare the possible values for a row or column, if a specific entry in a row has a unique value that
-# the other entries do not share we know that the unique value has to fill that entry.
-# Then repeat for all rows or column. Target can only be "row" or "column".
-
-
-def cross_check(
-    grid: List[List[int]], possibilities: List[List[list]], target: str
-) -> bool:
-    for row in range(size):
-        possibles = [[] for x in range(size)]
-        for column in range(size):
-            if target is "row":
-                if grid[row][column] is unknown:
-                    possibles[column] = possibilities[row][column]
-            elif target is "column":
-                if grid[column][row] is unknown:
-                    possibles[column] = possibilities[column][row]
-        for column in range(size):
+def cross_check(grid: Grid, target: CellCheck) -> bool:
+    """
+    Compare the possible values for a row or column, if a specific entry in a row has a unique
+    value that the other entries do not share we know that the unique value has to fill that entry.
+    Then repeat for all rows or column. Target can only be "row" or "column".
+    """
+    for row in range(SIZE):
+        possibles = [[] for _ in range(SIZE)]
+        for column in range(SIZE):
+            if target is CellCheck.ROW:
+                if grid.cells[row][column].value is UNKNOWN:
+                    possibles[column] = grid.cells[row][column].posibilties
+            elif target is CellCheck.COLUMN:
+                if grid.cells[column][row].value is UNKNOWN:
+                    possibles[column] = grid.cells[column][row].posibilties
+        for column in range(SIZE):
             if not possibles[column]:
                 continue
             for guess in possibles[column]:
                 correct = True
-                for counter in range(size):
+                for counter in range(SIZE):
                     if guess in possibles[counter] and column != counter:
                         correct = False
                         break
                 if correct:
-                    if target is "row":
-                        grid[row][column] = guess
-                        possibilities[row][column].clear()
-                    elif target is "column":
-                        grid[column][row] = guess
-                        possibilities[column][row].clear()
+                    if target is CellCheck.ROW:
+                        grid.cells[row][column].value = guess
+                        grid.cells[row][column].posibilties.clear()
+                    elif target is CellCheck.COLUMN:
+                        grid.cells[column][row].value = guess
+                        grid.cells[column][row].posibilties.clear()
                     return True
+    return False
 
 
-# A backtracking algorithm to ensure that all solutions are presented.
-# Backtracking works by going through each entry in the grid and then testing a valid number. Then continue
-# with the next entry, this repeats until a entry cannot be filled, then it loops back to the first entry and tries
-# another path. This can be represented as a tree and performing a brute force depth first search.
-
-
-def solve_single_solution(
-    grid: List[List[int]], possibilities: List[List[list]]
-) -> bool:
+def solve_single_solution(grid: Grid) -> bool:
+    """
+    A backtracking algorithm to ensure that all solutions are presented.
+    Backtracking works by going through each entry in the grid and then testing a valid number.
+    Then continue with the next entry, this repeats until a entry cannot be filled,
+    then it loops back to the first entry and tries another path.
+    This can be represented as a tree and performing a brute force depth first search.
+    """
     next_location = get_next_location(grid)
     if not next_location:
         print("Solution found!")
@@ -226,97 +328,59 @@ def solve_single_solution(
         stop = timeit.default_timer()
         print("Time: ", stop - start)
         return False
-
     row = next_location[0]
     column = next_location[1]
-
-    for number in possibilities[row][column]:
-        if number is unknown:
+    for number in grid.cells[row][column].posibilties:
+        if number is UNKNOWN:
             continue
         if number_has_valid_position(grid, row, column, number):
-            grid[row][column] = number
-            if solve_single_solution(grid, possibilities):
+            grid.cells[row][column].value = number
+            if solve_single_solution(grid):
                 return True
-            grid[row][column] = unknown
+            grid.cells[row][column].value = UNKNOWN
     return False
 
 
-# Validate that the number provided as input is valid for that specific spot on the grid.
-
-
-def number_has_valid_position(
-    grid: List[List[int]], row: int, column: int, number: int
-) -> bool:
-    for x in range(subgridsize):
-        for y in range(subgridsize):
-            if (
-                grid[x + row - row % subgridsize][y + column - column % subgridsize]
-                is number
-            ):
+def number_has_valid_position(grid: Grid, row: int, column: int, number: int) -> bool:
+    """
+    Validate that the number provided as input is valid for that specific spot on the grid.
+    """
+    for subgrid_x in range(SUBGRIDSIZE):
+        for subgrid_y in range(SUBGRIDSIZE):
+            subgrid_position_x = subgrid_x + row - row % SUBGRIDSIZE
+            subgrid_position_y = subgrid_y + column - column % SUBGRIDSIZE
+            value_at_position = grid.cells[subgrid_position_x][subgrid_position_y].value
+            if value_at_position is number:
                 return False
-    for count in range(size):
-        if grid[row][count] == number or grid[count][column] is number:
+    for count in range(SIZE):
+        if grid.cells[row][count].value == number or grid.cells[count][column].value is number:
             return False
     return True
 
 
-# Get the next empty location in the grid.
-
-
-def get_next_location(grid: List[List[int]]) -> List[int]:
-    for row in range(size):
-        for column in range(size):
-            if grid[row][column] is unknown:
+def get_next_location(grid: Grid) -> List[int] | None:
+    """
+    Get the next empty location in the grid.
+    """
+    for row in range(SIZE):
+        for column in range(SIZE):
+            if grid.cells[row][column].value is UNKNOWN:
                 return [row, column]
+    return None
 
 
-#  Print a 16x16 grid and convert the output to hexadecimal
+def print_grid_posibilities(grid: Grid) -> None:
+    """
+    Prints the calculated posibilities for each cell
+    """
+    print("Possibilities for each cell in the grid")
+    print(" ")
+    for row in range(SIZE):
+        for col in range(SIZE):
+            if grid.cells[row][col].value is not UNKNOWN:
+                continue
+            print(f"[{row}, {col}] : {[hex(v)[2] for v in grid.cells[row][col].posibilties]}")
+    print(" ")
 
 
-def print_grid(grid: List[List[int]]):
-    print("This is the grid!")
-    for row in range(size):
-        for column in range(size):
-            if column % subgridsize == 0:
-                print("", end=" ")
-            if grid[row][column] is unknown:
-                print("*", end=" ")
-            else:
-                print(hex(grid[row][column])[2:], end=" "),
-        print(" ")
-        if (1 + row) % subgridsize == 0:
-            print(" ")
-
-
-# Init 2D array for the grid. Enter values given from file.
-
-
-def initialize_grid(file: TextIOWrapper) -> List[List[int]]:
-    grid = [[0 for x in range(size)] for y in range(size)]
-    lines = [line for line in file.readlines() if line.strip()]
-    for row, line in enumerate(lines):
-        values = line.split()
-        for column, value in enumerate(values):
-            try:
-                grid[row][column] = int(value, size)
-            except:
-                grid[row][column] = ord(value)
-    return grid
-
-
-# Loading the grid from a .txt file, see examplegrid file for formatting to use your own grid.
-
-
-def get_grid_file() -> TextIOWrapper:
-    try:
-        grid_file = open("examplegrid.txt", "r")
-    except Exception as e:
-        return print("Error: " + str(e))
-    return grid_file
-
-
-start = timeit.default_timer()
-unknown = 42
-size = 16
-subgridsize = int(math.sqrt(size))
 main()
