@@ -63,7 +63,7 @@ def get_grid_file() -> TextIOWrapper:
     Loading the grid from a .txt file, see examplegrid file for formatting to use your own grid.
     """
     try:
-        grid_file = open("single_solution_example.txt", "r", encoding="utf-8")
+        grid_file = open("medium_difficulty_example.txt", "r", encoding="utf-8")
     except OSError as exception:
         return print("Error: " + str(exception))
     return grid_file
